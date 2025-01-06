@@ -1,5 +1,5 @@
 // API Keys
-const OPENAI_API_KEY = 'YOUR_API_KEY_HERE';
+const GEMINI_API_KEY = 'YOUR_API_KEY_HERE';
 
 // Sheet Names
 const TRANSACTION_SHEET_NAME = 'Transactions';
@@ -42,7 +42,7 @@ function categorizeUncategorizedTransactions() {
     });
   }
 
-  Logger.log("Processing this set of transactions and similar transactions with Open AI:");
+  Logger.log("Processing this set of transactions and similar transactions with Gemini AI:");
   Logger.log(transactionList);
 
   var categoryList = getAllowedCategories();
@@ -50,7 +50,7 @@ function categorizeUncategorizedTransactions() {
   var updatedTransactions = lookupDescAndCategory(transactionList, categoryList);
 
   if (updatedTransactions != null) {
-    Logger.log("Open AI returned the following sugested categories and descriptions:");
+    Logger.log("Gemini AI returned the following sugested categories and descriptions:");
     Logger.log(updatedTransactions);
     Logger.log("Writing updated transactions into your sheet...");
     writeUpdatedTransactions(updatedTransactions, categoryList);
@@ -177,7 +177,7 @@ function writeUpdatedTransactions(transactionList, categoryList) {
   var descriptionColumnLetter = getColumnLetterFromColumnHeader(headers, DESCRIPTION_COL_NAME);
   var categoryColumnLetter = getColumnLetterFromColumnHeader(headers, CATEGORY_COL_NAME);
   var transactionIDColumnLetter = getColumnLetterFromColumnHeader(headers, TRANSACTION_ID_COL_NAME);
-  var openAIFlagColLetter = getColumnLetterFromColumnHeader(headers, AI_AUTOCAT_COL_NAME);
+  var geminiFlagColLetter = getColumnLetterFromColumnHeader(headers, AI_AUTOCAT_COL_NAME);
 
   for (var i = 0; i < transactionList.length; i++) {
     // Find Row of transaction
@@ -214,13 +214,13 @@ function writeUpdatedTransactions(transactionList, categoryList) {
         Logger.log(error);
       }
 
-      // Mark Open AI Flag
-      if (openAIFlagColLetter != null) {
-        var openAIFlagRangeString = openAIFlagColLetter + transactionRow;
+      // Mark Gemini AI Flag
+      if (geminiFlagColLetter != null) {
+        var geminiFlagRangeString = geminiFlagColLetter + transactionRow;
 
         try {
-          var openAIFlagRange = sheet.getRange(openAIFlagRangeString);
-          openAIFlagRange.setValue("TRUE");
+          var geminiFlagRange = sheet.getRange(geminiFlagRangeString);
+          geminiFlagRange.setValue("TRUE");
         } catch (error) {
           Logger.log(error);
         }
@@ -260,29 +260,12 @@ function getColumnLetterFromColumnHeader(columnHeaders, columnName) {
     return columnLetter;
 }
 
-function lookupDescAndCategory (transactionList, categoryList, model='gpt-4-1106-preview') {
+function lookupDescAndCategory (transactionList, categoryList) {
   var transactionDict = {
     "transactions": transactionList
   };
 
-  const request = {
-    model: model,
-    temperature: 0.2,
-    top_p: 0.1,
-    seed: 1,
-    response_format: {"type": "json_object"},
-    messages: [
-      {
-        role: 'system',
-        content: 'Act as an API that categorizes and cleans up bank transaction descriptions for for a personal finance app.'
-      },
-      {
-        role: 'system',
-        content: 'Reference the following list of allowed_categories:\n' + JSON.stringify(categoryList)
-      },
-      {
-        role: 'system',
-        content: 'You will be given JSON input with a list of transaction descriptions and potentially related previously categorized transactions in the following format: \
+  var tillerFormat = 'You will be given JSON input with a list of transaction descriptions and potentially related previously categorized transactions in the following format: \
             {"transactions": [\
               {\
                 "transaction_id": "A unique ID for this transaction"\
@@ -310,34 +293,47 @@ function lookupDescAndCategory (transactionList, categoryList, model='gpt-4-1106
                 "updated_description": "The cleaned up version of the description",\
                 "category": "A category selected from the allowed_categories list"\
               }\
-            ]}'
-      },
-      {
-        role: 'user',
-        content: JSON.stringify(transactionDict)
-      }
-    ]
-  };
+            ]}';
+
+  const request = {
+    system_instruction: {
+      parts: [
+        {
+         text: "Act as an API that categorizes and cleans up bank transaction descriptions for a personal finance app. Reference the following list of allowed_categories:\n" + JSON.stringify(categoryList) + "\n" + tillerFormat
+        }
+      ],
+    },
+    contents: [{
+      parts: [
+        {
+          text: JSON.stringify(transactionDict),
+        }
+      ],
+    }],
+    generationConfig: {
+        "response_mime_type": "application/json",
+    }
+};
 
   const jsonRequest = JSON.stringify(request);
 
   const options = {
     method: 'POST',
     contentType: 'application/json',
-    headers: {'Authorization': 'Bearer ' + OPENAI_API_KEY},
     payload: jsonRequest,
     muteHttpExceptions: true,
   };
 
-  var response = UrlFetchApp.fetch("https://api.openai.com/v1/chat/completions", options).getContentText();
+  var geminiURL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=' + GEMINI_API_KEY;
+  var response = UrlFetchApp.fetch(geminiURL, options).getContentText();
   var parsedResponse = JSON.parse(response);
 
   if ("error" in parsedResponse) {
-    Logger.log("Error from Open AI: " + parsedResponse["error"]["message"]);
+    Logger.log("Error from Gemini AI: " + parsedResponse["error"]["message"]);
 
     return null;
   } else {
-    var apiResponse = JSON.parse(parsedResponse["choices"][0]["message"]["content"]);
+    var apiResponse = JSON.parse(parsedResponse["candidates"][0]["content"]["parts"][0]["text"]);
     return apiResponse["suggested_transactions"];
   }
 }

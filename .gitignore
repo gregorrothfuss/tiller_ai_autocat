@@ -1,0 +1,17 @@
+# Google Apps Script Clasp configuration and credentials
+.clasp.json
+.clasprc.json
+
+# Environment variables and secrets
+.env
+*.env
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Local scratch files
+scratch/

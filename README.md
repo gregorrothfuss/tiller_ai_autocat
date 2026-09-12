@@ -1,37 +1,82 @@
-
 # Tiller AI AutoCat
-Apps Script code to use Gemini AI to automatically categorize financial transactions (designed to work with Tiller Finance Feeds and Google Sheets)
+
+Automated transaction categorization engine for **Tiller Community Solutions** and Google Sheets powered by Google's **Gemini AI** (`gemini-flash-latest`).
 
 ## About
-- This is a script that is designed to work with the Tiller finance product to automatically categorize and clean up the Description column of your transactions (so you don't have to do it all manually!).
-- It will only touch transactions that don't have a Category set, or those that have generic/unhelpful descriptions (like raw "AMAZON RETA*" or "PAYPAL INST XFER").
-- It works by trying to find how you've previously categorized transactions like the one it's working on, correlating with receipts in your Gmail, sending that context to Gemini AI, and asking it to do its magic.
-- It will set the Category and Description field based on what comes back.
-- It will pick the best valid category from your Category list, or fall back to a category you specify if it gets confused.
-- If you want to mark transactions that have been modified by this code, add a column to your Transactions sheet called "AI AutoCat" - it will mark transactions it's modified by writing TRUE into this column.
-- This works for me, and I've tried to make it somewhat generic so it works for others -- but I DISCLAIM ALL RESPONSIBILITY IF IT MESSES ANYTHING UP IN YOUR SHEET. You can always undo or revert to a previous version.
-- Given how sensitive this is to data, any and all feedback about how it's working (or not) is greatly appreciated.
+Tiller AI AutoCat automatically cleans up messy bank descriptions and assigns accurate categories to your ledger:
+- Only touches transactions lacking a Category or having generic/raw platform descriptions (e.g. `AMZN Mktp US*...`, `PAYPAL INST XFER`, `Venmo Cashtag`).
+- Correlates with Gmail receipts (Amazon, Venmo, PayPal, eBay) to find what was actually bought.
+- Fixes Amazon Subscribe & Save transactions where order emails omit pricing by matching delivery dates.
+- Cleans Venmo emojis and casual memos into professional expense descriptions (e.g., "Chil crisps" → "Chili Crisp" categorized as `Groceries`).
+- Replaces raw platform descriptions with clear, clean merchant/product names (banning prefixes like `Amazon:` or `PayPal:`).
+- Marks processed rows with `TRUE` if you include an `AI AutoCat` column in your Transactions sheet.
+- Includes an optional local macOS Chrome bridge (`amazon_resolver.py`) to resolve exact Amazon line items when Amazon omits product details from order emails.
 
 ## Key Features
-- **Gmail Receipt Hunting:** Pulls data from Amazon, Venmo, PayPal, and eBay.
-- **Amazon Subscribe & Save Fix:** Correlates delivery dates when prices are hidden in emails.
-- **Venmo Memo Cleanup:** Turns "Chil crisps" into "Chili Crisp" and assigns "Groceries".
-- **Prefix Removal:** No more "Amazon: " or "Venmo: " prefixes; just clean item names.
-- **Batch Processing:** High-performance logic designed to handle dozens of rows without crashing.
-
-## Demo Video
-- You can see this working with some sample data here: [Demo Link](https://drive.google.com/file/d/16ROtqWboSOaNfgKGs0hUSjc3heGqFPBD/view?usp=drive_link)
+- **Powered by `gemini-flash-latest`**: Always runs on Google's latest, fastest Flash model with structured JSON enforcement.
+- **Zero-Secret Script Properties**: API keys are stored securely in Apps Script `Script Properties` rather than hardcoded in source code.
+- **Gmail Receipt Intelligence**: Hunts for order confirmations across Amazon, Venmo, PayPal, and eBay.
+- **Safe Historical Memory**: Protects against platform prefix poisoning so recurring vendors don't misattribute Amazon charges.
+- **Resilient Batch Processing**: Built-in exponential backoff for rate limits, processing batches within Google Apps Script execution limits.
+- **Optional Chrome Amazon Resolver**: Reads Amazon invoices silently via your logged-in browser session to get itemized titles without manual CSV exports.
 
 ## Installation Instructions
-- First, you need to get a Gemini AI API Key to use. Sign up as a developer with Google and get a secret key.
-- From your Tiller connected Google Sheet, go to Extensions --> Apps Script
-- If you don't have any existing Apps Script, you should just see `Code.gs` in the Files section on the left.
-- Use the + button to add two new files called `gviz.gs` and `ai_autocat.gs`.
-- Copy and paste the contents of the files here into those files.
-- Add (or change if you have one already) an `onOpen` function to your `Code.gs` file. This adds a menu item to call the AI AutoCat code.
-- Modify `ai_autocat.gs` to use your Gemini AI API Key.
-- Modify `ai_autocat.gs` to use the `FALLBACK_CATEGORY` you want to use (this must be a valid category, or the empty string).
 
-## Usage Instructions
-- After installing the script, refresh your Tiller sheet. You should see a new menu item appear called "AI AutoCat" after a few seconds. You can run the AI autocat code manually from this menu item.
-- If you want, you can also add a trigger to automatically run the AI AutoCat code nightly. See instructions here: [Apps Script Triggers](https://developers.google.com/apps-script/guides/triggers/installable). The function you want to run is `categorizeUncategorizedTransactions`.
+### 1. Get a Gemini API Key
+Get a free Gemini API key from [Google AI Studio](https://aistudio.google.com/).
+
+### 2. Set Up Google Apps Script
+1. In your Tiller Google Sheet, open **Extensions** → **Apps Script**.
+2. Click the **Project Settings** (gear icon on the left).
+3. Scroll down to **Script Properties** and click **Add script property**:
+   - **Property**: `GEMINI_API_KEY`
+   - **Value**: *(Paste your Gemini API key)*
+   - Click **Save script properties**.
+4. In the left panel, click the **Editor** (`< >` icon).
+5. In the existing `Code.gs` file (or a new file named `ai_autocat.gs`), paste the entire contents of [`ai_autocat.gs`](ai_autocat.gs).
+6. In `code.gs`, paste the contents of [`code.gs`](code.gs) to enable the sheet menu.
+7. Click **Save** (disk icon).
+
+### 3. Usage
+1. Refresh your Tiller Google Sheet.
+2. After a few seconds, an **AI AutoCat** menu will appear in the top toolbar.
+3. Click **AI AutoCat** → **Run AutoCat**.
+4. *First Run Authorization*: Google will prompt you to authorize permissions for Gmail (read-only search for receipts) and Sheets.
+5. (Optional) To run automatically on a schedule, click the clock icon in Apps Script (**Triggers**) and add a time-driven trigger for `categorizeUncategorizedTransactions` (e.g. nightly).
+
+---
+
+## Optional: Amazon Chrome Invoice Resolver
+
+Amazon recently stopped including specific product names in order confirmation emails (often stating only `Ordered 1 item: Adhesive Tape`).
+
+If you want exact product titles for Amazon orders, you can use the companion Python tool [`amazon_resolver.py`](amazon_resolver.py):
+
+### Requirements
+- macOS with Google Chrome installed and logged in to your Amazon account.
+- Enable Apple Events in Chrome: **View** → **Developer** → **Allow JavaScript from Apple Events**.
+- Python 3 (`urllib` and standard libraries only; no pip dependencies required).
+
+### Quick Lookup
+Resolve and categorize a single Amazon order:
+```bash
+export GEMINI_API_KEY="your-api-key"
+./amazon_resolver.py --order 113-8099586-4134612
+```
+
+### Automated Two-Way Sync with Google Sheets
+1. In Apps Script, click **Deploy** → **New deployment**.
+2. Select type **Web app**.
+   - **Execute as**: `Me`
+   - **Who has access**: `Anyone` (or within your organization).
+3. Copy the **Web App URL**.
+4. Run the sync command:
+```bash
+./amazon_resolver.py --sync "https://script.google.com/macros/s/.../exec"
+```
+The script will fetch all pending Amazon transactions, silently load their print invoices in Chrome, categorize the exact items with Gemini, and write them directly back to your Tiller sheet.
+
+---
+
+## License
+MIT License. See [LICENSE](LICENSE) for details.
